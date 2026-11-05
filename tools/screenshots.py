@@ -21,7 +21,8 @@ from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from app.engine import MODE_FILES, MODE_PROXY, MODE_SITE  # noqa: E402
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
+from http.server import SimpleHTTPRequestHandler  # noqa: E402
+from app.engine import FastHTTPServer  # noqa: E402
 import functools  # noqa: E402
 import threading  # noqa: E402
 from app.i18n import set_lang  # noqa: E402
@@ -146,13 +147,13 @@ def run(lang, base):
     class Quiet(SimpleHTTPRequestHandler):
         def log_message(self, *a):
             pass
-    dev = ThreadingHTTPServer(("127.0.0.1", 5173), functools.partial(Quiet, directory=site))
+    dev = FastHTTPServer(("127.0.0.1", 5173), functools.partial(Quiet, directory=site))
     threading.Thread(target=dev.serve_forever, daemon=True).start()
     inv = os.path.join(base, "inventory")
     os.makedirs(inv, exist_ok=True)
     with open(os.path.join(inv, "index.html"), "w", encoding="utf-8") as f:
         f.write("<!doctype html><title>Inventory (demo)</title><h1>Inventory</h1>")
-    dev2 = ThreadingHTTPServer(("127.0.0.1", 8069), functools.partial(Quiet, directory=inv))
+    dev2 = FastHTTPServer(("127.0.0.1", 8069), functools.partial(Quiet, directory=inv))
     threading.Thread(target=dev2.serve_forever, daemon=True).start()
 
     # the picker, before anything is shared

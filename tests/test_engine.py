@@ -224,7 +224,8 @@ def test_store_roundtrip(tmp_path):
 import json  # noqa: E402
 import socket  # noqa: E402
 import threading  # noqa: E402
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
+from http.server import BaseHTTPRequestHandler  # noqa: E402
+from app.engine import FastHTTPServer  # noqa: E402
 
 from app.engine import MODE_PROXY, detect_dev_servers, target_alive  # noqa: E402
 
@@ -278,7 +279,7 @@ class FakeDev(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def dev():
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), FakeDev)
+    srv = FastHTTPServer(("127.0.0.1", 0), FakeDev)
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield srv.server_address[1]
@@ -396,7 +397,7 @@ class TitledDev(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def titled():
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), TitledDev)
+    srv = FastHTTPServer(("127.0.0.1", 0), TitledDev)
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield srv.server_address[1]
@@ -462,3 +463,23 @@ def test_listening_ports_parses_netstat(monkeypatch):
     monkeypatch.setattr(_engine.sys, "platform", "win32")
     monkeypatch.setattr(_engine, "_run", fake)
     assert listening_ports() == {3000: "node", 8069: "python", 5173: ""}
+
+
+def test_starting_a_share_does_no_dns_lookup(monkeypatch, tmp_path):
+    """Slow DNS once made every share take ~35 s to start (HTTPServer calls socket.getfqdn)."""
+    import time as _time
+
+    from app.engine import lan_addresses
+
+    def slow(*a, **k):
+        _time.sleep(5)
+        return "slow.example"
+    monkeypatch.setattr(socket, "getfqdn", slow)
+    monkeypatch.setattr(socket, "gethostbyaddr", slow)
+    monkeypatch.setattr(socket, "gethostname", slow)
+    t = _time.time()
+    srv = ShareServer(Share(name="x", folder=str(tmp_path), port=free_port(19100)))
+    srv.start()
+    srv.stop()
+    lan_addresses()
+    assert _time.time() - t < 2

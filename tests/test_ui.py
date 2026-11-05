@@ -104,7 +104,9 @@ def test_two_shares_get_different_ports(win, tmp_path):
 
 def test_proxy_share(win, qapp):
     import threading
-    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+    from http.server import SimpleHTTPRequestHandler
+
+    from app.engine import FastHTTPServer
 
     from app.engine import MODE_PROXY
 
@@ -112,7 +114,7 @@ def test_proxy_share(win, qapp):
         def log_message(self, *a):
             pass
 
-    dev = ThreadingHTTPServer(("127.0.0.1", 0), Quiet)
+    dev = FastHTTPServer(("127.0.0.1", 0), Quiet)
     threading.Thread(target=dev.serve_forever, daemon=True).start()
     try:
         share = win.add_share(MODE_PROXY, target_port=dev.server_address[1])
@@ -133,7 +135,9 @@ def test_proxy_share(win, qapp):
 
 def test_picker_shares_a_running_app(win, qapp):
     import threading
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from http.server import BaseHTTPRequestHandler
+
+    from app.engine import FastHTTPServer
 
     from app.engine import MODE_PROXY
 
@@ -148,7 +152,7 @@ def test_picker_shares_a_running_app(win, qapp):
             self.end_headers()
             self.wfile.write(body)
 
-    dev = ThreadingHTTPServer(("127.0.0.1", 0), App)
+    dev = FastHTTPServer(("127.0.0.1", 0), App)
     threading.Thread(target=dev.serve_forever, daemon=True).start()
     port = dev.server_address[1]
     try:

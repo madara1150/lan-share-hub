@@ -5,7 +5,7 @@ import sys
 import tempfile
 import threading
 import traceback
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 
 
 def _get(port, path="/"):
@@ -19,7 +19,7 @@ def _checks(log):
     from PySide6.QtWidgets import QApplication  # noqa: F401  (bundled Qt loads)
     import segno
 
-    from .engine import MODE_PROXY, Share, ShareServer, free_port
+    from .engine import MODE_PROXY, FastHTTPServer, Share, ShareServer, free_port
 
     segno.make("http://192.168.1.25:8080/").save(os.path.join(tempfile.gettempdir(), "lsh-qr.png"), scale=4)
     log("qr ok")
@@ -46,7 +46,7 @@ def _checks(log):
             self.end_headers()
             self.wfile.write(body)
 
-    dev = ThreadingHTTPServer(("127.0.0.1", 0), Dev)
+    dev = FastHTTPServer(("127.0.0.1", 0), Dev)
     threading.Thread(target=dev.serve_forever, daemon=True).start()
     srv = ShareServer(Share(name="p", folder="", mode=MODE_PROXY, port=free_port(18200),
                             target_port=dev.server_address[1]))

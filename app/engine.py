@@ -14,6 +14,7 @@ import posixpath
 import re
 import select
 import socket
+import socketserver
 import sys
 import threading
 import time
@@ -95,19 +96,29 @@ def primary_ip() -> Optional[str]:
 
 
 def lan_addresses() -> List[str]:
-    """IPv4 addresses of this computer, the most likely LAN address first."""
+    """IPv4 addresses of this computer, the most likely LAN address first.
+
+    Asks the routing table which local address would reach each private range (no packet is sent and,
+    unlike looking up the computer's own host name, no DNS query that can hang for half a minute).
+    """
     found = []
-    first = primary_ip()
-    if first:
-        found.append(first)
-    try:
-        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
-            ip = info[4][0]
-            if ip not in found and not ip.startswith("127.") and not ip.startswith("169.254."):
-                found.append(ip)
-    except OSError:
-        pass
+    for target in (None, "192.168.255.255", "10.255.255.255", "172.31.255.255"):
+        ip = primary_ip() if target is None else _route_ip(target)
+        if ip and ip not in found:
+            found.append(ip)
     return found
+
+
+def _route_ip(target: str) -> Optional[str]:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect((target, 1))
+        ip = s.getsockname()[0]
+        return None if ip.startswith(("127.", "0.", "169.254.")) else ip
+    except OSError:
+        return None
+    finally:
+        s.close()
 
 
 def port_available(port: int) -> bool:
@@ -911,8 +922,22 @@ class Handler(BaseHTTPRequestHandler):
             up.close()
 
 
-class _Server(ThreadingHTTPServer):
+class FastHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer without the reverse-DNS lookup HTTPServer does when it starts.
+
+    The stock server_bind() calls socket.getfqdn(), which can take 30+ seconds on networks with a slow
+    or missing DNS server — the app (and the tests) would freeze every time sharing starts.
+    """
     daemon_threads = True
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
+
+
+class _Server(FastHTTPServer):
     allow_reuse_address = sys.platform != "win32"  # on Windows it would let two servers share a port
     share: Share
     emit: Callable[[Event], None]
