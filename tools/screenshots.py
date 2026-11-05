@@ -25,6 +25,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer  # noqa: E
 import functools  # noqa: E402
 import threading  # noqa: E402
 from app.i18n import set_lang  # noqa: E402
+import app.engine as engine  # noqa: E402
 import app.main_window as mw  # noqa: E402
 from app.main_window import MainWindow  # noqa: E402
 from app.store import Store  # noqa: E402
@@ -36,6 +37,9 @@ CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 SAMPLE_IP = "192.168.1.25"
 SAMPLE_HOME = "~/Documents"
 mw.lan_addresses = lambda: [SAMPLE_IP]
+# the app picker must only list the sample apps started below, never what really runs on this computer
+SAMPLE_APPS = {5173: "python3", 8069: "python3"}
+engine.listening_ports = lambda: dict(SAMPLE_APPS)
 
 SITE_HTML = """<!doctype html><html lang="th"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Team Board</title>
@@ -144,6 +148,23 @@ def run(lang, base):
             pass
     dev = ThreadingHTTPServer(("127.0.0.1", 5173), functools.partial(Quiet, directory=site))
     threading.Thread(target=dev.serve_forever, daemon=True).start()
+    inv = os.path.join(base, "inventory")
+    os.makedirs(inv, exist_ok=True)
+    with open(os.path.join(inv, "index.html"), "w", encoding="utf-8") as f:
+        f.write("<!doctype html><title>Inventory (demo)</title><h1>Inventory</h1>")
+    dev2 = ThreadingHTTPServer(("127.0.0.1", 8069), functools.partial(Quiet, directory=inv))
+    threading.Thread(target=dev2.serve_forever, daemon=True).start()
+
+    # the picker, before anything is shared
+    dlg = win.open_picker()
+    dlg.setAttribute(Qt.WA_DontShowOnScreen)
+    dlg.resize(680, 470)
+    end = time.time() + 15
+    while not hasattr(dlg, "apps") and time.time() < end:
+        pump(app, 0.1)
+    grab(app, dlg, f"picker-{lang}.png")
+    dlg.reject()
+
     px = win.add_share(MODE_PROXY, target_port=5173)
 
     fs = win.add_share(MODE_FILES, files)
@@ -189,8 +210,9 @@ def run(lang, base):
         win.toggle_theme()
 
     win.close()
-    dev.shutdown()
-    dev.server_close()
+    for d in (dev, dev2):
+        d.shutdown()
+        d.server_close()
     pump(app)
 
 

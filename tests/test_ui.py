@@ -129,3 +129,43 @@ def test_proxy_share(win, qapp):
     finally:
         dev.shutdown()
         dev.server_close()
+
+
+def test_picker_shares_a_running_app(win, qapp):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from app.engine import MODE_PROXY
+
+    class App(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            body = b"<title>Odoo</title>"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    dev = ThreadingHTTPServer(("127.0.0.1", 0), App)
+    threading.Thread(target=dev.serve_forever, daemon=True).start()
+    port = dev.server_address[1]
+    try:
+        dlg = win.open_picker()
+        assert pump(qapp, lambda: hasattr(dlg, "apps"), tries=1500)
+        app = next(a for a in dlg.apps if a.port == port)
+        assert app.title == "Odoo"
+        dlg._choose(app.port, app.title)
+        share = win.current
+        assert share.mode == MODE_PROXY and share.target_port == port and share.name == "Odoo"
+        assert win.is_running(share)
+        with urllib.request.urlopen(f"http://127.0.0.1:{share.port}/") as r:
+            assert r.read() == b"<title>Odoo</title>"
+        # choosing the same app again reuses the share instead of adding another
+        win._share_app(port, "Odoo")
+        assert sum(1 for s in win.store.shares if s.target_port == port) == 1
+        win.stop_share(share)
+    finally:
+        dev.shutdown()
+        dev.server_close()

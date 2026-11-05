@@ -7,12 +7,13 @@ import sys
 import segno
 from PySide6.QtCore import QObject, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QMenu,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QFileDialog, QFrame,
                                QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
                                QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QScrollArea, QSpinBox,
                                QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from . import __version__
+from .app_picker import AppPicker
 from .engine import (MODE_FILES, MODE_PROXY, MODE_SITE, Event, Share, ShareServer, detect_dev_servers, free_port,
                      lan_addresses, share_url, target_alive)
 from .i18n import lang, set_lang, tr
@@ -194,7 +195,7 @@ class MainWindow(QMainWindow):
         self.list.currentRowChanged.connect(self._select_row)
         sl.addWidget(self.list, 1)
         self.add_proxy_btn = button(kind="primary")
-        self.add_proxy_btn.clicked.connect(lambda: self.add_share(MODE_PROXY))
+        self.add_proxy_btn.clicked.connect(self.open_picker)
         sl.addWidget(self.add_proxy_btn)
         self.add_files_btn = button()
         self.add_files_btn.clicked.connect(lambda: self.add_share(MODE_FILES))
@@ -240,7 +241,7 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout()
         row.addStretch(1)
         self.empty_proxy_btn = button(kind="primary")
-        self.empty_proxy_btn.clicked.connect(lambda: self.add_share(MODE_PROXY))
+        self.empty_proxy_btn.clicked.connect(self.open_picker)
         self.empty_files_btn = button()
         self.empty_files_btn.clicked.connect(lambda: self.add_share(MODE_FILES))
         self.empty_site_btn = button()
@@ -358,7 +359,7 @@ class MainWindow(QMainWindow):
         self.target_status = label()
         tb.addWidget(self.target_status, 1)
         self.detect_btn = button()
-        self.detect_btn.clicked.connect(self.detect_menu)
+        self.detect_btn.clicked.connect(lambda: self.open_picker(pick_only=True))
         tb.addWidget(self.detect_btn)
         sg.addWidget(self.lb_target, 10, 0)
         sg.addWidget(self.target_box, 10, 1, 1, 3)
@@ -734,16 +735,27 @@ class MainWindow(QMainWindow):
         self.target_status.setText(tr("target_on") if alive else tr("target_off"))
         self.target_status.setStyleSheet(f"color: {color(self.store.theme, 'ok' if alive else 'warn')};")
 
-    def detect_menu(self):
-        if not self.current:
+    def open_picker(self, pick_only=False):
+        """Show the web apps running on this computer; picking one shares it (or retargets the current share)."""
+        if pick_only and not self.current:
             return
-        ports = detect_dev_servers(exclude={x.port for x in self.store.shares})
-        menu = QMenu(self)
-        if not ports:
-            menu.addAction(tr("detect_none")).setEnabled(False)
-        for p in ports:
-            menu.addAction(f"localhost:{p}", lambda p=p: self.set_target(p))
-        menu.exec(self.detect_btn.mapToGlobal(self.detect_btn.rect().bottomLeft()))
+        shared = {x.target_port: x.name for x in self.store.shares if x.mode == MODE_PROXY}
+        own = {x.port for x in self.store.shares}
+        dlg = AppPicker(self, shared, own, pick_only=pick_only)
+        if pick_only:
+            dlg.chosen.connect(lambda port, name: self.set_target(port))
+        else:
+            dlg.chosen.connect(self._share_app)
+        self.picker = dlg  # tests and screenshots reach it here
+        dlg.open()
+        return dlg
+
+    def _share_app(self, port, name):
+        existing = next((x for x in self.store.shares if x.mode == MODE_PROXY and x.target_port == port), None)
+        share = existing or self.add_share(MODE_PROXY, target_port=port, name=name)
+        self.select_share(share)
+        if not self.is_running(share):
+            self.start_share(share)
 
     def set_target(self, port):
         if not self.current:
@@ -764,13 +776,13 @@ class MainWindow(QMainWindow):
         self._changed()
 
     # ------------------------------------------------------------------ add / delete
-    def add_share(self, mode, folder=None, target_port=None):
+    def add_share(self, mode, folder=None, target_port=None, name=""):
         taken = {s.port for s in self.store.shares}
         if mode == MODE_PROXY:
             if target_port is None:
                 found = detect_dev_servers(exclude=taken)
                 target_port = found[0] if found else 3000
-            share = Share(name=f"localhost:{target_port}", folder="", mode=MODE_PROXY,
+            share = Share(name=name or f"localhost:{target_port}", folder="", mode=MODE_PROXY,
                           port=free_port(8090, taken | {target_port}), target_port=target_port)
             self.store.shares.append(share)
             self._reload_list()

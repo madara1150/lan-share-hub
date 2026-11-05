@@ -144,6 +144,169 @@ def detect_dev_servers(exclude=()) -> List[int]:
     return [p for p in DEV_PORTS if p not in exclude and target_alive(p, 0.15)]
 
 
+@dataclass
+class LocalApp:
+    """A web app found listening on this computer."""
+    port: int
+    process: str = ""
+    status: int = 0
+    title: str = ""
+    server: str = ""
+
+    @property
+    def label(self) -> str:
+        return self.title or self.server or self.process or f"localhost:{self.port}"
+
+
+def _run(cmd):
+    import subprocess
+    flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW: no console flash on Windows
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=8, creationflags=flags,
+                              errors="replace").stdout
+    except (OSError, ValueError, Exception):
+        return None
+
+
+_LOCAL_BIND = re.compile(r"^(\*|0\.0\.0\.0|127\.\d+\.\d+\.\d+|\[?::1?\]?|\[::\]|localhost)$")
+
+
+def listening_ports() -> dict:
+    """{port: process name} for TCP ports this computer listens on that localhost can reach.
+
+    Uses the system's own listing (lsof / netstat) so it is instant and knows process names;
+    returns None when that isn't available (then the caller scans instead).
+    """
+    found = {}
+    if sys.platform == "win32":
+        out = _run(["netstat", "-ano", "-p", "TCP"]), _run(["netstat", "-ano", "-p", "TCPv6"])
+        if not any(out):
+            return None
+        names = {}
+        tl = _run(["tasklist", "/FO", "CSV", "/NH"]) or ""
+        for line in tl.splitlines():
+            cols = [c.strip('"') for c in line.split('","')]
+            if len(cols) >= 2 and cols[1].isdigit():
+                names[cols[1]] = friendly_process(cols[0][:-4] if cols[0].lower().endswith(".exe") else cols[0])
+        for text in out:
+            for line in (text or "").splitlines():
+                cols = line.split()
+                if len(cols) >= 5 and cols[0].upper().startswith("TCP") and cols[3].upper() == "LISTENING":
+                    addr, _, port = cols[1].rpartition(":")
+                    if port.isdigit() and _LOCAL_BIND.match(addr):
+                        found.setdefault(int(port), names.get(cols[4], ""))
+        return found
+    out = _run(["lsof", "+c", "0", "-nP", "-iTCP", "-sTCP:LISTEN"])
+    if out is None:
+        return None
+    for line in out.splitlines()[1:]:
+        cols = line.split()
+        if len(cols) < 9:
+            continue
+        addr, _, port = cols[8].rpartition(":")
+        if port.isdigit() and _LOCAL_BIND.match(addr):
+            found.setdefault(int(port), friendly_process(cols[0].replace("\\x20", " ")))
+    return found
+
+
+_PROCESS_NAMES = {"com.docker.backend": "Docker", "com.docker.vpnkit": "Docker", "vpnkit": "Docker",
+                  "Docker Desktop": "Docker", "Code Helper": "VS Code", "Code Helper (Plugin)": "VS Code"}
+
+
+def friendly_process(name: str) -> str:
+    return _PROCESS_NAMES.get(name, name)
+
+
+def scan_ports(ports=range(1, 65536), workers=256) -> List[int]:
+    """Fallback when there's no lsof/netstat: try connecting to every port on localhost."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def open_(p):
+        for fam, host in ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")):
+            s = socket.socket(fam, socket.SOCK_STREAM)
+            s.settimeout(0.2)
+            try:
+                if s.connect_ex((host, p)) == 0:
+                    return p
+            except OSError:
+                pass
+            finally:
+                s.close()
+        return None
+
+    with ThreadPoolExecutor(workers) as ex:
+        return [p for p in ex.map(open_, ports) if p]
+
+
+_TITLE = re.compile(rb"<title[^>]*>(.*?)</title>", re.I | re.S)
+
+
+def probe_http(port: int, timeout: float = 2.5, path: str = "/", hops: int = 2) -> Optional[LocalApp]:
+    """Ask localhost:port for a web page. Returns None when it doesn't speak HTTP."""
+    try:
+        s = socket.create_connection(("localhost", port), timeout=timeout)
+    except OSError:
+        return None
+    data = b""
+    try:
+        s.settimeout(timeout)
+        s.sendall(f"GET {path} HTTP/1.0\r\nHost: localhost:{port}\r\nAccept: text/html,*/*\r\n"
+                  f"User-Agent: LANShareHub-probe\r\nConnection: close\r\n\r\n".encode())
+        deadline = time.time() + timeout
+        while len(data) < 65536 and time.time() < deadline:
+            chunk = s.recv(8192)
+            if not chunk:
+                break
+            data += chunk
+            if b"</title>" in data.lower():
+                break
+    except OSError:
+        pass
+    finally:
+        s.close()
+    if not data.startswith(b"HTTP/"):
+        return None
+    head, _, body = data.partition(b"\r\n\r\n")
+    lines = head.decode("latin-1").split("\r\n")
+    try:
+        status = int(lines[0].split()[1])
+    except (IndexError, ValueError):
+        status = 0
+    headers = {}
+    for ln in lines[1:]:
+        k, _, v = ln.partition(":")
+        headers[k.strip().lower()] = v.strip()
+    loc = headers.get("location", "")
+    if 300 <= status < 400 and loc and hops:
+        parts = urlsplit(loc)
+        if parts.hostname in (None, "localhost", "127.0.0.1", "::1"):
+            nxt = (parts.path or "/") + ("?" + parts.query if parts.query else "")
+            app = probe_http(port, timeout, nxt, hops - 1)
+            if app:
+                return app
+    app = LocalApp(port=port, status=status, server=headers.get("server", "") or headers.get("x-powered-by", ""))
+    m = _TITLE.search(body)
+    if m:
+        app.title = html.unescape(re.sub(r"\s+", " ", m.group(1).decode("utf-8", "replace"))).strip()[:80]
+    return app
+
+
+def find_local_apps(exclude=()) -> List[LocalApp]:
+    """Web apps running on this computer, the most likely ones (pages with a title, 2xx) first."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    ports = listening_ports()
+    if ports is None:
+        ports = {p: "" for p in scan_ports()}
+    ports = {p: n for p, n in ports.items() if p not in exclude}
+    with ThreadPoolExecutor(32) as ex:
+        apps = [a for a in ex.map(probe_http, sorted(ports)) if a]
+    for a in apps:
+        a.process = ports.get(a.port, "")
+    apps.sort(key=lambda a: (not a.title, not (200 <= a.status < 400), a.port not in DEV_PORTS, a.port))
+    return apps
+
+
 def share_url(ip: Optional[str], port: int) -> str:
     return f"http://{ip or 'localhost'}:{port}/"
 

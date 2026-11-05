@@ -40,7 +40,7 @@
 | 🧪 **ให้เพื่อนเทสแอป localhost** | กำลังรัน `npm run dev` อยู่ที่ `localhost:3000`? กดปุ่มเดียว เพื่อนที่ต่อ Wi-Fi เดียวกันก็เปิดลิงก์ `http://<IP เครื่องคุณ>:8090` ได้เลย ใช้กับ Next.js, Vite, React, Vue, Angular, Django, Laravel ฯลฯ |
 | 🔁 **Hot reload ใช้ได้** | ส่งต่อ WebSocket ด้วย แก้โค้ดแล้วหน้าจอเพื่อนรีเฟรชตามทันที |
 | 🛠️ **ไม่ต้องแก้ config โปรเจค** | dev server ไม่ต้องเปิด `--host 0.0.0.0` โปรแกรมแปลง Host/Origin ให้เป็น `localhost` ให้อัตโนมัติ dev server จึงไม่บล็อกเพื่อน |
-| 🔎 **หาแอปที่เปิดอยู่ให้เอง** | สแกนพอร์ตที่ใช้บ่อย (3000, 5173, 4200, 8000 …) และบอกสถานะว่าแอปเปิดอยู่หรือยัง ถ้า dev server ปิดอยู่ เพื่อนจะเห็นหน้า "แอปยังไม่ได้เปิด" ที่รีเฟรชตัวเองจนกว่าจะกลับมา |
+| 🔎 **เจอทุกแอปที่เปิดอยู่ เลือกแชร์ได้เลย** | สแกน **ทุกพอร์ต** ที่เปิดอยู่บนเครื่อง แล้วแสดงเฉพาะที่เป็นเว็บ พร้อมชื่อหน้าเว็บ โปรแกรม และพอร์ต (เช่น Next.js, Vite, Odoo, Django, Docker) กด **แชร์** ตัวไหนก็ได้ลิงก์ทันที ถ้า dev server ปิดอยู่ เพื่อนจะเห็นหน้า "แอปยังไม่ได้เปิด" ที่รีเฟรชตัวเองจนกว่าจะกลับมา |
 | 📁 **แชร์โฟลเดอร์** | เพื่อนเปิดดูและดาวน์โหลดไฟล์ผ่านเบราว์เซอร์ หน้าเว็บสวยและใช้บนมือถือได้ ค้นหาไฟล์ได้ ดูวิดีโอแบบเลื่อนได้ |
 | ⬆️ **ให้เพื่อนอัปโหลดได้ (ถ้าเปิดเอง)** | ปิดไว้เป็นค่าเริ่มต้น เมื่อเปิดแล้วไฟล์ที่อัปโหลดจะไม่เขียนทับไฟล์เดิม ถ้าชื่อซ้ำจะตั้งชื่อใหม่ให้ |
 | 🌐 **เปิดเว็บ static** | เลือกโฟลเดอร์ที่มี `index.html` (เช่น `dist/`, `build/`) เพื่อเปิดให้เพื่อนดูได้ทันที |
@@ -76,9 +76,11 @@
 **ให้เพื่อนเทสแอปที่รันบน localhost**
 
 1. รัน dev server ตามปกติ เช่น `npm run dev`
-2. เปิด LAN Share Hub แล้วกด **🧪 ให้เพื่อนเทสแอป localhost** (โปรแกรมจะหาพอร์ตของแอปให้ หรือกด **ค้นหาแอปที่เปิดอยู่**)
-3. กด **▶ เริ่มแชร์**
+2. เปิด LAN Share Hub แล้วกด **🧪 ให้เพื่อนเทสแอป localhost** จะเห็นรายการแอปทั้งหมดที่เปิดอยู่บนเครื่อง
+3. กด **▶ แชร์** ที่แอปที่ต้องการ (ถ้าไม่อยู่ในรายการ ใส่พอร์ตเองด้านล่างได้) แชร์ได้หลายแอปพร้อมกัน
 4. ส่งลิงก์ (ปุ่ม **คัดลอก**) หรือให้เพื่อนสแกน QR code ซึ่งเพื่อนต้องต่อ Wi-Fi / LAN เดียวกับคุณ
+
+<p align="center"><img src="docs/screenshots/picker-th.png" width="620" alt="เลือกแอปที่เปิดอยู่บนเครื่องเพื่อแชร์"></p>
 
 **แชร์ไฟล์หรือเว็บ static**
 
@@ -102,6 +104,11 @@
 <details><summary><b>หน้าเว็บขึ้นว่า "แอปยังไม่ได้เปิด"</b></summary>
 
 แปลว่าไม่มีอะไรรันที่พอร์ตที่ตั้งไว้ ให้รัน dev server ก่อน หรือแก้ช่อง **แอปที่รันอยู่** ให้ตรงพอร์ต หน้านี้จะรีเฟรชเองทุก 4 วินาที
+</details>
+
+<details><summary><b>ใช้กับ Odoo ได้ไหม</b></summary>
+
+ได้ เลือก Odoo จากรายการ (หรือใส่พอร์ต เช่น `8069`) หน้าเว็บ การล็อกอิน และการแจ้งเตือนสด (WebSocket) ใช้ได้ ถ้าตั้ง `workers` มากกว่า 0 การแจ้งเตือนสดจะวิ่งผ่านพอร์ตแยก (8072) ซึ่งยังไม่ได้ส่งต่อ ส่วนลิงก์แบบ URL เต็มที่ Odoo สร้างจาก `web.base.url` (เช่น ในอีเมล) จะยังชี้ไป `localhost`
 </details>
 
 <details><summary><b>ต้องตั้ง dev server ให้ฟัง 0.0.0.0 ไหม</b></summary>
@@ -158,7 +165,7 @@ python3 -m venv .venv
 | 🧪 **Let friends test your localhost app** | Running `npm run dev` on `localhost:3000`? Press one button and friends on the same Wi-Fi open `http://<your IP>:8090`. Works with Next.js, Vite, React, Vue, Angular, Django, Laravel and more |
 | 🔁 **Hot reload works** | WebSockets are forwarded too, so friends' screens update as you edit code |
 | 🛠️ **No project config changes** | No need for `--host 0.0.0.0`: Host/Origin are rewritten to `localhost`, so your dev server doesn't block friends |
-| 🔎 **Finds your running apps** | Scans the usual ports (3000, 5173, 4200, 8000 …) and shows whether your app is up. If the dev server is down, friends see an "app isn't running" page that refreshes itself until it's back |
+| 🔎 **Finds every running app — pick what to share** | Scans **every open port** on this computer and lists the ones that serve web pages, with page title, program and port (Next.js, Vite, Odoo, Django, Docker …). Press **Share** on any of them and the link is ready. If the dev server is down, friends see an "app isn't running" page that refreshes itself until it's back |
 | 📁 **Share folders** | Friends browse and download files from a clean, mobile-friendly page with search and video seeking |
 | ⬆️ **Uploads, only if you allow them** | Off by default. When on, uploads never overwrite a file — duplicates get a new name |
 | 🌐 **Host static sites** | Pick a folder with `index.html` (e.g. `dist/`, `build/`) and it's live |
@@ -194,9 +201,11 @@ python3 -m venv .venv
 **Let friends test the app you run on localhost**
 
 1. Start your dev server as usual, e.g. `npm run dev`
-2. Open LAN Share Hub and press **🧪 Let friends test localhost** (it picks your app's port, or press **Find running apps**)
-3. Press **▶ Start sharing**
+2. Open LAN Share Hub and press **🧪 Let friends test localhost** to see every app running on this computer
+3. Press **▶ Share** on the one you want (not listed? type its port at the bottom) — share as many as you like
 4. Send the link (**Copy**) or let friends scan the QR code — they must be on the same Wi-Fi / LAN
+
+<p align="center"><img src="docs/screenshots/picker-en.png" width="620" alt="Picking a running app to share"></p>
 
 **Share files or a static site**
 
@@ -220,6 +229,11 @@ python3 -m venv .venv
 <details><summary><b>The page says "The app isn't running"</b></summary>
 
 Nothing is listening on the port you set. Start your dev server or fix the **Your app** port. The page refreshes itself every 4 seconds.
+</details>
+
+<details><summary><b>Does it work with Odoo?</b></summary>
+
+Yes. Pick Odoo from the list (or type its port, e.g. `8069`): pages, login and live notifications (WebSocket) work. With `workers` above 0, live notifications use a separate port (8072) that isn't forwarded yet, and absolute links Odoo builds from `web.base.url` (e.g. in emails) still point to `localhost`.
 </details>
 
 <details><summary><b>Do I need to bind my dev server to 0.0.0.0?</b></summary>

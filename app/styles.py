@@ -18,7 +18,7 @@ THEMES = {
 
 QSS = """
 * {{ font-size: 13px; color: {ink}; }}
-QMainWindow, #root {{ background: {bg}; }}
+QMainWindow, QDialog, #root {{ background: {bg}; }}
 QToolTip {{ background: {card}; color: {ink}; border: 1px solid {line}; padding: 4px 8px; }}
 #topbar {{ background: {panel}; border-bottom: 1px solid {line}; }}
 #brand {{ font-size: 17px; font-weight: 700; }}

@@ -365,3 +365,100 @@ def test_proxy_dev_server_down(tmp_path):
 def test_detect(dev):
     assert target_alive(dev)
     assert isinstance(detect_dev_servers(), list)
+
+
+# ---------------------------------------------------------------- finding apps on this computer
+
+from app import engine as _engine  # noqa: E402
+from app.engine import LocalApp, find_local_apps, listening_ports, probe_http  # noqa: E402
+
+
+class TitledDev(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        if self.path == "/":
+            self.send_response(307)
+            self.send_header("Location", "/login")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        body = "<html><head><title>  My &amp; Shop\n Login </title></head></html>".encode()
+        self.send_response(200)
+        self.send_header("Server", "Werkzeug/3.0")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+@pytest.fixture
+def titled():
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), TitledDev)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield srv.server_address[1]
+    srv.shutdown()
+    srv.server_close()
+
+
+def test_probe_follows_redirect_and_reads_title(titled):
+    app = probe_http(titled)
+    assert app.status == 200 and app.title == "My & Shop Login" and app.server == "Werkzeug/3.0"
+
+
+def test_probe_ignores_non_http():
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen()
+    port = srv.getsockname()[1]
+
+    def talk():
+        c, _ = srv.accept()
+        c.sendall(b"220 smtp ready\r\n")
+        c.close()
+    threading.Thread(target=talk, daemon=True).start()
+    try:
+        assert probe_http(port, timeout=1) is None
+    finally:
+        srv.close()
+
+
+def test_find_local_apps(titled):
+    apps = find_local_apps()
+    mine = [a for a in apps if a.port == titled]
+    assert mine and mine[0].title == "My & Shop Login"
+    assert all(isinstance(a, LocalApp) for a in apps)
+    assert titled not in [a.port for a in find_local_apps(exclude={titled})]
+
+
+def test_listening_ports_parses_lsof(monkeypatch):
+    out = ("COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n"
+           "node 1 me 20u IPv6 0x1 0t0 TCP [::1]:5173 (LISTEN)\n"
+           "com.docker.backend 2 me 9u IPv4 0x2 0t0 TCP 127.0.0.1:18069 (LISTEN)\n"
+           "python3 3 me 3u IPv4 0x3 0t0 TCP *:8000 (LISTEN)\n"
+           "Code\\x20Helper 4 me 3u IPv4 0x4 0t0 TCP 127.0.0.1:49442 (LISTEN)\n"
+           "nginx 5 me 3u IPv4 0x5 0t0 TCP 192.168.1.9:8443 (LISTEN)\n")
+    monkeypatch.setattr(_engine.sys, "platform", "darwin")
+    monkeypatch.setattr(_engine, "_run", lambda cmd: out)
+    assert listening_ports() == {5173: "node", 18069: "Docker", 8000: "python3", 49442: "VS Code"}
+
+
+def test_listening_ports_parses_netstat(monkeypatch):
+    netstat4 = ("  Proto  Local Address  Foreign Address  State  PID\n"
+                "  TCP    0.0.0.0:3000   0.0.0.0:0        LISTENING  4242\n"
+                "  TCP    127.0.0.1:8069 0.0.0.0:0        LISTENING  77\n"
+                "  TCP    10.0.0.2:139   0.0.0.0:0        LISTENING  4\n"
+                "  TCP    127.0.0.1:50000 127.0.0.1:3000  ESTABLISHED 4242\n")
+    netstat6 = "  TCP    [::1]:5173     [::]:0           LISTENING  99\n"
+    tasks = '"node.exe","4242","Console","1","50,000 K"\n"python.exe","77","Console","1","9 K"\n'
+
+    def fake(cmd):
+        if cmd[0] == "tasklist":
+            return tasks
+        return netstat6 if "TCPv6" in cmd else netstat4
+    monkeypatch.setattr(_engine.sys, "platform", "win32")
+    monkeypatch.setattr(_engine, "_run", fake)
+    assert listening_ports() == {3000: "node", 8069: "python", 5173: ""}

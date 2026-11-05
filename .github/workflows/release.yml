@@ -55,11 +55,12 @@ jobs:
           PYTHON: python
         run: ./build_mac.sh
       - name: Tests
+        timeout-minutes: 15
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          .venv-mac/bin/pip install -q pytest
-          .venv-mac/bin/python -m pytest -q
+          .venv-mac/bin/pip install -q pytest pytest-timeout
+          .venv-mac/bin/python -m pytest -v --timeout=90 --timeout-method=thread
       - name: Self test of the built app
         run: '"dist/LAN Share Hub.app/Contents/MacOS/LAN Share Hub" --selftest "$RUNNER_TEMP/selftest.log"; s=$?; cat "$RUNNER_TEMP/selftest.log"; exit $s'
       - uses: actions/upload-artifact@v4
