@@ -1,7 +1,7 @@
 # PyInstaller spec for macOS -> dist/LAN Share Hub.app
 import os
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
-VERSION = os.environ.get("APP_VERSION", "1.0.0")
+VERSION = os.environ.get("APP_VERSION", "1.0.1")
 EXCLUDES = ["tkinter", "unittest", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.Qt3DCore",
             "PySide6.QtQuick", "PySide6.QtQml", "PySide6.QtMultimedia", "PySide6.QtCharts", "PySide6.QtPdf",
             "PySide6.QtBluetooth", "PySide6.QtSql"]

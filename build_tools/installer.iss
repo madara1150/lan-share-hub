@@ -1,7 +1,7 @@
 ﻿; Inno Setup 6 script -> dist\LANShareHub-Windows-Setup.exe
 ; Build: ISCC /DAppVersion=1.2.3 build_tools\installer.iss
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.0.1"
 #endif
 #define AppName "LAN Share Hub"
 #define AppExe "LANShareHub.exe"
